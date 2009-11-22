@@ -8,100 +8,92 @@
   (proceed [s] "true if breaker should proceed with call in this state")
   (on-success [s] "transition from s to this state after a successful call")
   (on-error [s] "transition from s to this state after an unsuccessful call")
-  (on-before-call [s] "transition from s to this state before a call")
-  (on-cancel [s] "transition from s to this state after a call is cancelled by circuit breaker")
-  (with-transition-policy [s p] "create a state like s but with policy p"))
+  (on-before-call [s] "transition from s to this state before a call"))
 
 (deftype ClosedState [policy fail-count] [clojure.lang.IPersistentMap])
 (deftype OpenState [policy time-stamp]   [clojure.lang.IPersistentMap])
 (deftype InitialHalfOpenState [policy]   [clojure.lang.IPersistentMap])
 (deftype PendingHalfOpenState [policy]   [clojure.lang.IPersistentMap])
 
-(defn- tt [s] true)
-(defn- ff [s] false)
-(defn- gettime [] (System/currentTimeMillis))
 
-(def #^{:private true}abs-transitions
-  {:proceed ff
-   :on-success identity
-   :on-error identity
-   :on-before-call identity
-   :on-cancel identity
-   :with-transition-policy (fn [s p] (assoc s :policy p))})
+(def #^{:private true}
+     abs-transitions
+     {:proceed (constantly false)
+      :on-success identity
+      :on-error identity
+      :on-before-call identity})
+
+(defn- to-closed-state-from [s] (ClosedState (:policy s) 0))
 
 (extend 
  ::ClosedState CircuitBreakerTransitions
  (merge abs-transitions
-	{:proceed tt
-	 :on-success (fn [s] (assoc s :fail-count 0))
-	 :on-error (fn [s]
-		     (let [p (:policy s)
-			   f (:fail-count s)]
-		       (if (= f (:fail-count p))
-			 (OpenState p (gettime))
-			 (ClosedState p (inc f)))))}))
+	{:proceed    (constantly true)
+	 :on-success (fn [s] (if (zero? (:fail-count s)) s (to-closed-state-from s)))
+	 :on-error   (fn [s]
+		       (let [p (:policy s)
+			     f (:fail-count s)]
+			 (if (= f (:fail-count p))
+			   (OpenState p (System/currentTimeMillis))
+			   (assoc s :fail-count (inc f)))))}))
 
 (extend 
- ::OpenState
- CircuitBreakerTransitions
+ ::OpenState CircuitBreakerTransitions
  (merge abs-transitions
-	{:proceed ff
-	 :on-success (fn [s] (InitialHalfOpenState (:policy s)))
+	{:on-success (fn [s] (InitialHalfOpenState (:policy s)))
 	 :on-before-call (fn [s] 
-			   (let [p (:policy s)]
-			     (if (> (- (System/currentTimeMillis) (:time-stamp s))
-				    (:timeout p)) 
+			   (let [p (:policy s)
+				 delta (- (System/currentTimeMillis) (:time-stamp s))]
+			     (if (> delta (:timeout p)) 
 			       (InitialHalfOpenState p)
 			       s)))}))
 
 (extend 
- ::InitialHalfOpenState
- CircuitBreakerTransitions
+ ::InitialHalfOpenState CircuitBreakerTransitions
  (merge abs-transitions
-	{:proceed tt
+	{:proceed (constantly true)
 	 :on-before-call (fn [s] (PendingHalfOpenState (:policy s)))
-	 :on-success (fn [s] (ClosedState (:policy s) 0))
-	 :on-error (fn [s] (OpenState (:policy s) (gettime)))}))
+	 :on-success     to-closed-state-from
+	 :on-error       (fn [s] (OpenState (:policy s) (System/currentTimeMillis)))}))
 
 (extend 
  ::PendingHalfOpenState
  CircuitBreakerTransitions
  (merge abs-transitions
-	{:on-success (fn [s] (ClosedState (:policy s) 0))
-	 :on-error (fn [s] (OpenState (:policy s) (gettime)))}))
+	{:on-success to-closed-state-from
+	 :on-error (fn [s] (OpenState (:policy s) (System/currentTimeMillis)))}))
 
 
 (comment test
 
-(def default-policy (TransitionPolicy 5 5000))
-
-(def initial-state (ClosedState default-policy 0))
+(def #^{:private true}default-policy (TransitionPolicy 5 5000))
+(def #^{:private true}initial-state (ClosedState default-policy 0))
 
 (assert (= initial-state (on-success initial-state)))
 
 (assert (= (ClosedState default-policy 1) (on-error initial-state)))
 
-(def e4 (ClosedState default-policy 4))
+(def #^{:private true}e4 (ClosedState default-policy 4))
 
-(assert (= (class (OpenState default-policy (gettime))) 
+(assert (= (class (OpenState default-policy (System/currentTimeMillis))) 
 	   (class (on-error (on-error e4)))))
 
 (let [s (on-error (on-error e4))
-      o (on-cancel s)
-      oclass (class (OpenState default-policy (gettime)))]
+      o (on-before-call s)
+      oclass (class (OpenState default-policy (System/currentTimeMillis)))]
   (do
     (assert (= (class o) oclass))
     (Thread/sleep 6000)
-    (assert (= (class (on-cancel s))
+    (assert (= (class (on-before-call s))
 	       (class (InitialHalfOpenState default-policy))))))
 
 
-(def i (InitialHalfOpenState default-policy))
+(def #^{:private true}i (InitialHalfOpenState default-policy))
 
 (assert (= (on-before-call i) (PendingHalfOpenState default-policy)))
-(assert (= (class (on-error i)) (class (OpenState default-policy (gettime)))))
+(assert (= (class (on-error i)) (class (OpenState default-policy (System/currentTimeMillis)))))
 (assert (= (on-success i) initial-state))
 
-(def p (PendingHalfOpenState default-policy))
+(def #^{:private true}p (PendingHalfOpenState default-policy))
 (assert (= (on-success p) initial-state))
 )
