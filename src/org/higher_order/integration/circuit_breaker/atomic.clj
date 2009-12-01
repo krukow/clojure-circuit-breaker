@@ -22,56 +22,61 @@ to the initial state or back to the open state depending on the outcome.")
 (def default-policy (TransitionPolicy 5 5000))
 (def initial-state (ClosedState default-policy 0))
 
-(def state (atom initial-state))
+(defn make-circuit-breaker 
+  ([] (atom initial-state))
+  ([s] (atom s)))
 
 (def transition-by!)
-
-(defn wrap [f]
+  
+(defn wrap-with [f state]
   (fn [& args]
-    (let [s (transition-by! on-before-call)]
+    (let [s (transition-by! on-before-call state)]
       (if (proceed s)
 	(try 
 	 (let [res (apply f args)]
-	   (do (transition-by! on-success)
+	   (do (transition-by! on-success state)
 	       res))
 	 (catch Exception e
 	   (do 
-	     (transition-by! on-error)
+	     (transition-by! on-error state)
 	     (throw e))))
 	(throw (java.lang.RuntimeException. "OpenCircuit"))))))
 
-(defn transition-by! [f]
+(defn wrap [f]
+  (let [state (make-circuit-breaker)]
+    [(wrap-with f state) state]))
+
+(defn transition-by! [f state]
   (loop [s @state
 	 t (f s)]
-    (cond 
-      (identical? s t) s
-      (compare-and-set! state s t) t
-      :else (let [s1 @state
-		  t1 (f s1)]
-	      (recur s1 t1)))))
+    (if (or (identical? s t) (compare-and-set! state s t))
+      t
+      (let [s1 @state
+	    t1 (f s1)]
+	(recur s1 t1)))))
 
 
-(comment test
-
-(def #^{:private true}s (wrap (constantly 42)))
-(def #^{:private true}f (wrap (fn [_] (assert nil))))
-
-(dotimes [i 10]
-  (s))
-
-(assert (= (ClosedState default-policy 0) @state))
-
-(dotimes [i 5]
-  (try (f) (catch Exception e)))
-
-(assert (= (ClosedState default-policy 5) @state))
-
-(try (f) (catch Exception e))
-
-(assert (= (class (OpenState default-policy 0)) (class @state)))
-(Thread/sleep 5000)
-(s)
-(assert (= (ClosedState default-policy 0) @state))
-
-
-)
+(comment 
+  test
+  
+  (let [[sf st]  (wrap (constantly 42))]
+    (def #^{:private true}s sf)
+    (def #^{:private true}f (wrap-with (fn [_] (assert nil)) st))
+    (def state st))
+  
+  (dotimes [i 10]
+    (s))
+  
+  (assert (= (ClosedState default-policy 0) @state))
+  
+  (dotimes [i 5]
+    (try (f) (catch Exception e)))
+  
+  (assert (= (ClosedState default-policy 5) @state))
+  
+  (try (f) (catch Exception e))
+  
+  (assert (= (class (OpenState default-policy 0)) (class @state)))
+  (Thread/sleep 5000)
+  (s)
+  (assert (= (ClosedState default-policy 0) @state)))
