@@ -12,9 +12,6 @@ calls to the callee for a fixed period (fail fast).
 After this period it lets a single call go though and transitions
 to the initial state or back to the open state depending on the outcome.")
 
-(comment
-  (add-classpath "file:///Users/krukow/Projects/clojure/circuitbreaker/src/"))
-
 (ns org.higher-order.integration.circuit-breaker.atomic
   (:use org.higher-order.integration.circuit-breaker.states)
   (:gen-class))

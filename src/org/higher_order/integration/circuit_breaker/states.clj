@@ -10,10 +10,10 @@
   (on-error [s] "transition from s to this state after an unsuccessful call")
   (on-before-call [s] "transition from s to this state before a call"))
 
-(deftype ClosedState [policy fail-count] [clojure.lang.IPersistentMap])
-(deftype OpenState [policy time-stamp]   [clojure.lang.IPersistentMap])
-(deftype InitialHalfOpenState [policy]   [clojure.lang.IPersistentMap])
-(deftype PendingHalfOpenState [policy]   [clojure.lang.IPersistentMap])
+(deftype ClosedState [policy fail-count] clojure.lang.IPersistentMap)
+(deftype OpenState [policy time-stamp]   clojure.lang.IPersistentMap)
+(deftype InitialHalfOpenState [policy]   clojure.lang.IPersistentMap)
+(deftype PendingHalfOpenState [policy]   clojure.lang.IPersistentMap)
 
 
 (def #^{:private true}
