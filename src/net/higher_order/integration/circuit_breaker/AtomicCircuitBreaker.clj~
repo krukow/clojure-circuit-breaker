@@ -1,0 +1,27 @@
+(ns net.higher-order.integration.circuit-breaker.AtomicCircuitBreaker
+  (:use net.higher-order.integration.circuit-breaker.atomic
+	net.higher-order.integration.circuit-breaker.states)
+  (:import net.higher_order.integration.circuit_breaker.CircuitBreaker)
+  (:gen-class
+   :init init
+   :prefix "impl-"
+   :implements [net.higher_order.integration.circuit_breaker.CircuitBreaker]
+   :constructors {[] []
+		  [Object] []}
+   :state state))
+
+
+(defn impl-init 
+  ([] [[] (atom initial-state)])
+  ([st]
+     ([[] (atom st)])))
+
+
+(defn impl-wrap [c f]
+  (wrap-with f (.state c)))
+
+(defn impl- [c f]
+  (wrap-with f (.state c)))
+
+(defn #^net.higher_order.integration.circuit_breaker.states.CircuitBreakerTransitions impl-current_state [this]
+  @(.state this))

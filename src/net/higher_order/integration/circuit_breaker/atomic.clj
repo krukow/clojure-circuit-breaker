@@ -1,5 +1,5 @@
 (comment
-  "Implementation of Michael Nygaard's Circuit breaker stability pattern.
+"Implementation of Michael Nygaard's circuit breaker stability pattern.
 
 A circuit breaker acts as an intemediary between a caller and a callee.
 Typically the callee is an interface to an integration point, and
@@ -10,70 +10,72 @@ If the circuit breaker detects a number of failures in the callee it
 calls to the callee for a fixed period (fail fast).
 
 After this period it lets a single call go though and transitions
-to the initial state or back to the open state depending on the outcome.")
+to the initial state or back to the open state depending on the outcome.
+
+The circuit breaker is parameterized by a policy that decides
+* how many failures are needed to trip
+* how long before letting the single probe call pass
+* what type of Exceptions from the integration point should
+be considered errors to the circuit breaker
+(e.g., one may want to exclude security related exceptions)")
 
 (ns net.higher-order.integration.circuit-breaker.atomic
-  (:use net.higher-order.integration.circuit-breaker.states))
+  (:require [net.higher-order.integration.circuit-breaker.states :as s]))
 
-(def default-policy (TransitionPolicy 5 5000))
-(def initial-state (ClosedState default-policy 0))
-
-(defn make-circuit-breaker 
-  ([] (atom initial-state))
-  ([s] (atom s)))
-
-(def transition-by!)
+(def default-policy (s/make-transition-policy 5 5000))
+(def initial-state (s/mk-closed default-policy 0))
 
 (defn wrap-with [f state]
   (fn [& args]
-    (let [s (transition-by! on-before-call state)]
-      (if (proceed s)
+    (let [s (swap! state s/on-before-call)]
+      (if (s/proceed s)
 	(try
-	 (let [res (apply f args)]
-	   (do (transition-by! on-success state)
-	       res))
+	  (let [res (apply f args)]
+	    (do (swap! state s/on-success)
+		res))
 	 (catch Exception e
 	   (do
-	     (transition-by! on-error state)
+	     (swap! state
+		    (fn [s]
+		      ((if (s/is-error (:policy @state) e)
+			 s/on-error 
+			 s/on-success) s)))
 	     (throw e))))
 	(throw (RuntimeException. "OpenCircuit"))))))
 
-(defn wrap [f]
-  (let [state (make-circuit-breaker)]
-    [(wrap-with f state) state]))
 
-(defn transition-by! [f state]
-  (loop [s @state
-	 t (f s)]
-    (if (or (identical? s t) 
-	    (compare-and-set! state s t))
-      t
-      (let [s1 @state]
-	(recur s1 (f s1))))))
+(defn make-circuit-breaker
+  "Creates a circuit-breaker instance. If called with no arguments
+a circuit-breaker in the initial closed state with the default policy is
+created. If called with one argument supporting the CircuitBreakerTransitions
+protocol, a circuit-breaker is created using that as state."
+  ([] (atom initial-state))
+  ([#^TransitionPolicy p] (atom (s/mk-closed p 0))))
+
+(defn make-circuit-breaker-from-state
+  ([#^CircuitBreakerTransitions s] (atom s)))
 
 (comment 
   test
-  
-  (let [[sf st]  (wrap (constantly 42))]
-    (def #^{:private true}s sf)
-    (def #^{:private true}f (wrap-with (fn [] (throw (Exception.))) st))
-    (def state st))
+  (def cb (make-circuit-breaker))
+  (def succ (wrap-with (constantly 42) cb))
+  (def fail (wrap-with (fn [] (throw (Exception.))) cb))
   
   (dotimes [i 10]
-    (s))
+    (succ))
   
-  (assert (= (ClosedState default-policy 0) @state))
+  (assert (= (s/mk-closed default-policy 0) @cb))
   
   (dotimes [i 5]
-    (try (f) (catch Exception e)))
+    (try (fail) (catch Exception e)))
   
-  (assert (= (ClosedState default-policy 5) @state))
+  (assert (= (s/mk-closed default-policy 5) @cb))
   
-  (try (f) (catch Exception e))
+  (try (fail) (catch Exception e))
   
-  (assert (= (class (OpenState default-policy 0)) (class @state)))
+  (assert (= (class (s/mk-open default-policy 1)) (class @cb)))
   (Thread/sleep 5000)
-  (s)
-  (assert (= (ClosedState default-policy 0) @state))
+  (succ)
+  (assert (= (s/mk-closed default-policy 0) @cb))
 
 )
