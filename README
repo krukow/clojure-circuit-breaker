@@ -11,5 +11,35 @@ All :namespaces already compiled.
 Created /Users/krukow/Projects/clojure/circuitbreaker/circuit-breaker.jar
 
 
-See:
-http://blog.higher-order.net/2010/05/05/circuitbreaker-clojure-1-2/
+To compile Java example.
+krukow:~/Projects/clojure/circuitbreaker$ javac -cp lib/`ls lib/ | grep clojure-1.2.0-master`:circuit-breaker.jar src/C.java
+
+To run:
+
+krukow:~/Projects/clojure/circuitbreaker$ java -cp lib/`ls lib/ | grep clojure-1.2.0-master`:circuit-breaker.jar:src C
+Invoked with: KARL
+KARL
+Invoked with: 42
+42
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 0}
+null arg
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 1}
+null arg
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 2}
+null arg
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 3}
+null arg
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 4}
+null arg
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 5}
+null arg
+{:policy {:max-fail 5, :timeoutms 5000}, :time-stamp 1278066395386}
+{:policy {:max-fail 5, :timeoutms 5000}, :time-stamp 1278066395386}
+OpenCircuit
+{:policy {:max-fail 5, :timeoutms 5000}, :time-stamp 1278066395386}
+Invoked with: KARL
+KARL
+Invoked with: 42
+42
+{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 0}
+krukow:~/Projects/clojure/circuitbreaker$ 
