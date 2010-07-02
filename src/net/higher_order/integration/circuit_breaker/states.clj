@@ -22,12 +22,13 @@ Some exceptions, e.g., access control violation, are not a sign of integration-p
   (is-error [p ex] true))
 
 (defn make-transition-policy [max-fail timeout]
-  {:pre [(and (pos? max-fail) (pos? timeout))]}
+  {:pre [(pos? max-fail)
+	 (pos? timeout)]}
   (SimpleTransitionPolicy. max-fail timeout))
 
 (declare mk-closed mk-open mk-initial-half-open mk-pending-half-open)
 
-(defrecord ClosedState [#^{:tag (:on-interface TransitionPolicy)} policy ^int fail-count]
+(defrecord ClosedState [policy fail-count]
   CircuitBreakerTransitions
   (proceed [this] true)
   (on-success [this]
@@ -38,11 +39,12 @@ Some exceptions, e.g., access control violation, are not a sign of integration-p
 	      (assoc this :fail-count (inc fail-count))))
   (on-before-call [this] this))
 
-(defn mk-closed [^TransitionPolicy policy fail-count]
-  {:pre [(not (neg? fail-count))]}
+(defn mk-closed [policy fail-count]
+  {:pre [(not (neg? fail-count))
+	 (satisfies? TransitionPolicy policy)]}
   (ClosedState. policy fail-count))
 
-(defrecord OpenState [#^{:tag (:on-interface TransitionPolicy)} policy ^long time-stamp]
+(defrecord OpenState [policy time-stamp]
   CircuitBreakerTransitions
   (proceed [_] false)
   (on-success [this] (mk-initial-half-open policy))
@@ -54,28 +56,31 @@ Some exceptions, e.g., access control violation, are not a sign of integration-p
        (mk-initial-half-open policy)
        this))))
 
-(defn mk-open [^TransitionPolicy policy time-stamp]
-  {:pre [(pos? time-stamp)]}
+(defn mk-open [policy time-stamp]
+  {:pre [(pos? time-stamp)
+	 (satisfies? TransitionPolicy policy)]}
   (OpenState. policy time-stamp))
 
-(defrecord InitialHalfOpenState [#^{:tag (:on-interface TransitionPolicy)} policy]
+(defrecord InitialHalfOpenState [policy]
   CircuitBreakerTransitions
   (proceed [this] true)
   (on-success [this] (mk-closed policy 0))
   (on-error [this] (mk-open policy (System/currentTimeMillis)))
   (on-before-call [this] (mk-pending-half-open policy)))
 
-(defn mk-initial-half-open [^TransitionPolicy policy]
+(defn mk-initial-half-open [policy]
+  {:pre [(satisfies? TransitionPolicy policy)]}
   (InitialHalfOpenState. policy))
 
-(defrecord PendingHalfOpenState [#^{:tag (:on-interface TransitionPolicy)} policy]
+(defrecord PendingHalfOpenState [policy]
   CircuitBreakerTransitions
   (proceed [this] false)
   (on-success [this] (mk-closed policy 0))
   (on-error [this] (mk-open policy (System/currentTimeMillis)))
   (on-before-call [this] this))
 
-(defn mk-pending-half-open [^TransitionPolicy policy]
+(defn mk-pending-half-open [policy]
+  {:pre [(satisfies? TransitionPolicy policy)]}
   (PendingHalfOpenState. policy))
 
 

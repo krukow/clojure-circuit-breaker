@@ -50,10 +50,12 @@ a circuit-breaker in the initial closed state with the default policy is
 created. If called with one argument supporting the CircuitBreakerTransitions
 protocol, a circuit-breaker is created using that as state."
   ([] (atom initial-state))
-  ([#^TransitionPolicy p] (atom (s/mk-closed p 0))))
+  ([p] {:pre [(satisfies? s/TransitionPolicy p)]}
+     (atom (s/mk-closed p 0))))
 
-(defn make-circuit-breaker-from-state
-  ([#^CircuitBreakerTransitions s] (atom s)))
+(defn make-circuit-breaker-from-state [s]
+  {:pre [(satisfies? s/CircuitBreakerTransitions s)]}
+  (atom s))
 
 (comment 
   test

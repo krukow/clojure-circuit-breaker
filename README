@@ -1,2 +1,15 @@
+Compiling.
+I have a problem with AOT compile order. 
+
+Until it is fixed you can do this from BASH:
+
+krukow:~/Projects/clojure/circuitbreaker$ lein deps
+     [copy] Copying 9 files to /Users/krukow/Projects/clojure/circuitbreaker/lib
+krukow:~/Projects/clojure/circuitbreaker$ java -server -cp lib/`ls lib/ | grep clojure-1.2.0-master`:src:classes clojure.main src/compile.clj
+krukow:~/Projects/clojure/circuitbreaker$ lein jar
+All :namespaces already compiled.
+Created /Users/krukow/Projects/clojure/circuitbreaker/circuit-breaker.jar
+
+
 See:
 http://blog.higher-order.net/2010/05/05/circuitbreaker-clojure-1-2/
