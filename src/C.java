@@ -1,7 +1,9 @@
+import net.higher_order.integration.circuit_breaker.java.AtomicCircuitBreaker;
+import net.higher_order.integration.circuit_breaker.java.CircuitBreaker;
 import clojure.lang.IFn;
 import clojure.lang.RT;
-import net.higher_order.integration.circuit_breaker.AtomicCircuitBreaker;
-import net.higher_order.integration.circuit_breaker.CircuitBreaker;
+
+
 
 public class C {
 	public static void main(String[] args) {
@@ -50,7 +52,7 @@ public class C {
 
 
 	private static void status(CircuitBreaker atomicCircuitBreaker) {
-		System.out.println(RT.printString(atomicCircuitBreaker.current_state()));
+		System.out.println(RT.printString(atomicCircuitBreaker.getCurrentState()));
 	}
 
 	private static void fail(CircuitBreaker atomicCircuitBreaker, IFn wrap) {
