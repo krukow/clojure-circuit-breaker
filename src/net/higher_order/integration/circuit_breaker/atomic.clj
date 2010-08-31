@@ -20,7 +20,9 @@ be considered errors to the circuit breaker
 (e.g., one may want to exclude security related exceptions)")
 
 (ns net.higher-order.integration.circuit-breaker.atomic
-  (:require [net.higher-order.integration.circuit-breaker.states :as s]))
+  (:require [net.higher-order.integration.circuit-breaker.states :as s])
+  (:import [net.higher-order.integration.circuit-breaker.states
+	    TransitionPolicy]))
 
 (def default-policy (s/make-transition-policy 5 5000))
 (def initial-state (s/mk-closed default-policy 0))
@@ -37,8 +39,8 @@ be considered errors to the circuit breaker
 	   (do
 	     (swap! state
 		    (fn [s]
-		      ((if (s/is-error (:policy @state) e)
-			 s/on-error 
+		      ((if (:is-error (:policy @state) e)
+			 s/on-error
 			 s/on-success) s)))
 	     (throw e))))
 	(throw (RuntimeException. "OpenCircuit"))))))
@@ -50,7 +52,7 @@ a circuit-breaker in the initial closed state with the default policy is
 created. If called with one argument supporting the CircuitBreakerTransitions
 protocol, a circuit-breaker is created using that as state."
   ([] (atom initial-state))
-  ([p] {:pre [(satisfies? s/TransitionPolicy p)]}
+  ([p] {:pre [(instance? TransitionPolicy p)]}
      (atom (s/mk-closed p 0))))
 
 (defn make-circuit-breaker-from-state [s]
@@ -62,19 +64,19 @@ protocol, a circuit-breaker is created using that as state."
   (def cb (make-circuit-breaker))
   (def succ (wrap-with (constantly 42) cb))
   (def fail (wrap-with (fn [] (throw (Exception.))) cb))
-  
+
   (dotimes [i 10]
     (succ))
-  
+
   (assert (= (s/mk-closed default-policy 0) @cb))
-  
+
   (dotimes [i 5]
     (try (fail) (catch Exception e)))
-  
+
   (assert (= (s/mk-closed default-policy 5) @cb))
-  
+
   (try (fail) (catch Exception e))
-  
+
   (assert (= (class (s/mk-open default-policy 1)) (class @cb)))
   (Thread/sleep 5000)
   (succ)

@@ -7,41 +7,39 @@
   (on-error [s] "transition from s to this state after an unsuccessful call")
   (on-before-call [s] "transition from s to this state before a call"))
 
-(defprotocol TransitionPolicy
-  (max-fail-count [p] "returns the maximum number of
-failed calls before transitioning from closed to open")
-  (timeout [p] "returns the number of miliseconds to wait in open state")
-  (is-error [p ex] "returns true if exception ex should be considered an error.
-Some exceptions, e.g., access control violation, are not a sign of integration-point
-      failure."))
+(defrecord TransitionPolicy [max-fail-count timeout is-error])
 
-(defrecord SimpleTransitionPolicy [max-fail timeoutms]
-  TransitionPolicy
-  (max-fail-count [this] max-fail)
-  (timeout [this] timeoutms)
-  (is-error [p ex] true))
+(defn
+  make-transition-policy
+  ([max-fail-count timeout]
+     (make-transition-policy max-fail-count timeout
+			     (fn [x] (instance? java.lang.Exception x))))
+  ([max-fail-count timeout is-error]
+     {:pre [(pos? max-fail-count)
+	    (pos? timeout)
+	    (instance? clojure.lang.IFn is-error)]}
+     (TransitionPolicy. max-fail-count timeout is-error)))
 
-(defn make-transition-policy [max-fail timeout]
-  {:pre [(pos? max-fail)
-	 (pos? timeout)]}
-  (SimpleTransitionPolicy. max-fail timeout))
 
 (declare mk-closed mk-open mk-initial-half-open mk-pending-half-open)
 
 (defrecord ClosedState [policy fail-count]
   CircuitBreakerTransitions
   (proceed [this] true)
+
   (on-success [this]
-	      (if (zero? fail-count) this (ClosedState. policy 0)))
+    (if (zero? fail-count) this (ClosedState. policy 0)))
+
   (on-error [this]
-	    (if (= fail-count (max-fail-count policy))
-	      (mk-open policy (System/currentTimeMillis))
-	      (assoc this :fail-count (inc fail-count))))
+    (if (= fail-count (:max-fail-count policy))
+      (mk-open policy (System/currentTimeMillis))
+      (assoc this :fail-count (inc fail-count))))
+
   (on-before-call [this] this))
 
 (defn mk-closed [policy fail-count]
   {:pre [(not (neg? fail-count))
-	 (satisfies? TransitionPolicy policy)]}
+	 (instance? TransitionPolicy policy)]}
   (ClosedState. policy fail-count))
 
 (defrecord OpenState [policy time-stamp]
@@ -52,13 +50,13 @@ Some exceptions, e.g., access control violation, are not a sign of integration-p
   (on-before-call
    [this] 
    (let [delta (- (System/currentTimeMillis) time-stamp)]
-     (if (> delta (timeout policy)) 
+     (if (> delta (:timeout policy)) 
        (mk-initial-half-open policy)
        this))))
 
 (defn mk-open [policy time-stamp]
   {:pre [(pos? time-stamp)
-	 (satisfies? TransitionPolicy policy)]}
+	 (instance? TransitionPolicy policy)]}
   (OpenState. policy time-stamp))
 
 (defrecord InitialHalfOpenState [policy]
@@ -69,7 +67,7 @@ Some exceptions, e.g., access control violation, are not a sign of integration-p
   (on-before-call [this] (mk-pending-half-open policy)))
 
 (defn mk-initial-half-open [policy]
-  {:pre [(satisfies? TransitionPolicy policy)]}
+  {:pre [(instance? TransitionPolicy policy)]}
   (InitialHalfOpenState. policy))
 
 (defrecord PendingHalfOpenState [policy]
@@ -80,42 +78,43 @@ Some exceptions, e.g., access control violation, are not a sign of integration-p
   (on-before-call [this] this))
 
 (defn mk-pending-half-open [policy]
-  {:pre [(satisfies? TransitionPolicy policy)]}
+  {:pre [(instance? TransitionPolicy policy)]}
   (PendingHalfOpenState. policy))
 
 
 
-(comment test
+(comment
+  test
 
-	 (def #^{:private true}default-policy (make-transition-policy 5 5000))
-	 (def #^{:private true}initial-state (mk-closed default-policy 0))
-	 
-	 (assert (= initial-state (on-success initial-state)))
+  (def #^{:private true}default-policy (make-transition-policy 5 5000))
+  (def #^{:private true}initial-state (mk-closed default-policy 0))
 
-	 (assert (= (mk-closed default-policy 1) (on-error initial-state)))
+  (assert (= initial-state (on-success initial-state)))
 
-	 (def #^{:private true}e4 (mk-closed default-policy 4))
+  (assert (= (mk-closed default-policy 1) (on-error initial-state)))
 
-	 (assert (= OpenState
-		    (class (on-error (on-error e4)))))
+  (def #^{:private true}e4 (mk-closed default-policy 4))
 
-	 (let [s (on-error (on-error e4))
-	       o (on-before-call s)]
-	   (do
-	     (assert (= (class o) OpenState))
-	     (Thread/sleep (+ (timeout default-policy) 1000))
-	     (assert (= (class (on-before-call s))
-			InitialHalfOpenState))))
+  (assert (= OpenState
+	     (class (on-error (on-error e4)))))
+
+  (let [s (on-error (on-error e4))
+	o (on-before-call s)]
+    (do
+      (assert (= (class o) OpenState))
+      (Thread/sleep (+ (:timeout default-policy) 1000))
+      (assert (= (class (on-before-call s))
+		 InitialHalfOpenState))))
 
 
-	 (def #^{:private true}i (mk-initial-half-open default-policy))
+  (def #^{:private true}i (mk-initial-half-open default-policy))
 
-	 (assert (= (on-before-call i) (mk-pending-half-open default-policy)))
-	 (assert (= (class (on-error i)) OpenState))
-	 (assert (= (on-success i) initial-state))
+  (assert (= (on-before-call i) (mk-pending-half-open default-policy)))
+  (assert (= (class (on-error i)) OpenState))
+  (assert (= (on-success i) initial-state))
 
-	 (def #^{:private true}p (mk-pending-half-open default-policy))
-	 (assert (= (on-success p) initial-state))
-	 (assert (= (class (on-error p)) OpenState))
+  (def #^{:private true}p (mk-pending-half-open default-policy))
+  (assert (= (on-success p) initial-state))
+  (assert (= (class (on-error p)) OpenState))
 
-	 )
+  )
