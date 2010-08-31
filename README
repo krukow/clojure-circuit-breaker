@@ -1,45 +1,59 @@
+Functional Implementation of Michael Nygaard's circuit breaker 
+stability pattern using Clojure protocols and data types
+
+A circuit breaker acts as an intemediary between a caller and a callee.
+Typically the callee is an interface to an integration point, and
+the caller is a client of that integration point.
+
+If the circuit breaker detects a number of failures in the callee it 
+'trips' (i.e., transitions to the open state) and prevents further 
+calls to the callee for a fixed period (fail fast).
+
+After this period it lets a single call go though and transitions
+to the initial state or back to the open state depending on the outcome.
+
+The circuit breaker is parameterized by a policy that decides
+* how many failures are needed to trip
+* how long before letting the single probe call pass
+* what type of Exceptions from the integration point should
+be considered errors to the circuit breaker
+(e.g., one may want to exclude security related exceptions)
+
+---------
+
+The implementation uses Clojure protocols and records (data type)
+to implement a functional state machine.
+
+The current state of a circuitbreaker is held in a clojure atom,
+to updating is lock-free. States are immutable (record) objects
+that satisfy the CircuitBreakerTransitions protocol. The protocol
+functions are pure (transition) functions that map a state to a new state.
+
+This implementation is easy to use from Java.
+For an example see src/C.java and notes below.
+
 Compiling.
-I have a problem with AOT compile order. 
-
-Until it is fixed you can do this from BASH:
-
-krukow:~/Projects/clojure/circuitbreaker$ lein deps
-     [copy] Copying 9 files to /Users/krukow/Projects/clojure/circuitbreaker/lib
-krukow:~/Projects/clojure/circuitbreaker$ java -server -cp lib/`ls lib/ | grep clojure-1.2.0-master`:src:classes clojure.main src/compile.clj
-krukow:~/Projects/clojure/circuitbreaker$ lein jar
-All :namespaces already compiled.
-Created /Users/krukow/Projects/clojure/circuitbreaker/circuit-breaker.jar
+Use leiningen 1.3.x.
+krukow:~/Projects/clojure/circuitbreaker$ lein compile
+Listening for transport dt_socket at address: 8030
+Compiling net.higher-order.integration.circuit-breaker.states
+Compiling net.higher-order.integration.circuit-breaker.atomic
+Compiling net.higher-order.integration.circuit-breaker.java
+Compiling net.higher-order.integration.circuit-breaker.java.AtomicCircuitBreaker
 
 
 To compile Java example.
-krukow:~/Projects/clojure/circuitbreaker$ javac -cp lib/`ls lib/ | grep clojure-1.2.0-master`:circuit-breaker.jar src/C.java
+krukow:~/Projects/clojure/circuitbreaker$ javac -cp lib/*:src:classes src/C.java -d classes/
 
 To run:
 
-krukow:~/Projects/clojure/circuitbreaker$ java -cp lib/`ls lib/ | grep clojure-1.2.0-master`:circuit-breaker.jar:src C
+krukow:~/Projects/clojure/circuitbreaker$ java -cp lib/*:src:classes C
 Invoked with: KARL
 KARL
 Invoked with: 42
 42
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 0}
+#:net.higher-order.integration.circuit-breaker.states.ClosedState{:policy #:net.higher-order.integration.circuit-breaker.states.TransitionPolicy{:max-fail-count 5, :timeout 5000, :is-error #<states$make_transition_policy$fn__91 net.higher_order.integration.circuit_breaker.states$make_transition_policy$fn__91@67c7980c>}, :fail-count 0}
 null arg
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 1}
-null arg
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 2}
-null arg
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 3}
-null arg
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 4}
-null arg
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 5}
-null arg
-{:policy {:max-fail 5, :timeoutms 5000}, :time-stamp 1278066395386}
-{:policy {:max-fail 5, :timeoutms 5000}, :time-stamp 1278066395386}
-OpenCircuit
-{:policy {:max-fail 5, :timeoutms 5000}, :time-stamp 1278066395386}
-Invoked with: KARL
-KARL
-Invoked with: 42
-42
-{:policy {:max-fail 5, :timeoutms 5000}, :fail-count 0}
+...
+
 krukow:~/Projects/clojure/circuitbreaker$ 
